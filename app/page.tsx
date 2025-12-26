@@ -1,51 +1,110 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { generateClient } from "aws-amplify/data";
-import type { Schema } from "@/amplify/data/resource";
+import { useState } from "react";
 import "./../app/app.css";
-import { Amplify } from "aws-amplify";
-import outputs from "@/amplify_outputs.json";
-import "@aws-amplify/ui-react/styles.css";
+import { fal } from "@fal-ai/client";
 
-Amplify.configure(outputs);
-
-const client = generateClient<Schema>();
+fal.config({
+  proxyUrl: "/api/fal/proxy",
+});
 
 export default function App() {
-  const [todos, setTodos] = useState<Array<Schema["Todo"]["type"]>>([]);
+  const [prompt, setPrompt] = useState("");
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
 
-  function listTodos() {
-    client.models.Todo.observeQuery().subscribe({
-      next: (data) => setTodos([...data.items]),
-    });
-  }
+  async function generateImage() {
+    if (!prompt.trim()) {
+      alert("Please enter a prompt");
+      return;
+    }
 
-  useEffect(() => {
-    listTodos();
-  }, []);
+    setIsGenerating(true);
+    setImageUrl(null);
 
-  function createTodo() {
-    client.models.Todo.create({
-      content: window.prompt("Todo content"),
-    });
+    try {
+      const result = await fal.subscribe("fal-ai/flux/dev", {
+        input: {
+          prompt,
+          image_size: "square_hd",
+        },
+        pollInterval: 5000,
+        logs: true,
+        onQueueUpdate(update) {
+          console.log("queue update", update);
+        },
+      });
+
+      const imageUrl = result.data.images[0].url;
+      setImageUrl(imageUrl);
+    } catch (error) {
+      console.error("Error generating image:", error);
+      alert("Failed to generate image. Please try again.");
+    } finally {
+      setIsGenerating(false);
+    }
   }
 
   return (
     <main>
-      <h1>My todos</h1>
-      <button onClick={createTodo}>+ new</button>
-      <ul>
-        {todos.map((todo) => (
-          <li key={todo.id}>{todo.content}</li>
-        ))}
-      </ul>
-      <div>
-        🥳 App successfully hosted. Try creating a new todo.
-        <br />
-        <a href="https://docs.amplify.aws/nextjs/start/quickstart/nextjs-app-router-client-components/">
-          Review next steps of this tutorial.
-        </a>
+      <div
+        style={{
+          maxWidth: "800px",
+          margin: "0 auto",
+          padding: "2rem",
+        }}
+      >
+        <h1 style={{ marginBottom: "2rem", textAlign: "center" }}>
+          Generate Image with fal.ai
+        </h1>
+        <div style={{ marginBottom: "1rem" }}>
+          <input
+            type="text"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Enter your image prompt..."
+            style={{
+              width: "100%",
+              padding: "0.5rem",
+              fontSize: "1rem",
+              borderRadius: "4px",
+              border: "1px solid #ccc",
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !isGenerating) {
+                generateImage();
+              }
+            }}
+          />
+        </div>
+        <button
+          onClick={generateImage}
+          disabled={isGenerating || !prompt.trim()}
+          style={{
+            padding: "0.5rem 1rem",
+            fontSize: "1rem",
+            borderRadius: "4px",
+            border: "none",
+            backgroundColor: isGenerating ? "#ccc" : "#0070f3",
+            color: "white",
+            cursor: isGenerating ? "not-allowed" : "pointer",
+          }}
+        >
+          {isGenerating ? "Generating..." : "Generate Image"}
+        </button>
+        {imageUrl && (
+          <div style={{ marginTop: "1rem" }}>
+            <img
+              src={imageUrl}
+              alt="Generated"
+              style={{
+                maxWidth: "100%",
+                borderRadius: "8px",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.1)",
+              }}
+            />
+          </div>
+        )}
       </div>
     </main>
   );
